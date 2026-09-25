@@ -1,11 +1,14 @@
-import asyncio, logging
+import asyncio
+import logging
+import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton,
                            CallbackQuery, LabeledPrice)
 from aiogram.enums import ParseMode
 
-from config import (BOT_TOKEN, GIGACHAT_CREDENTIALS, GIGACHAT_SCOPE,
+from config import (BOT_TOKEN, GIGACHAT_AUTH_KEY,
                     FREE_DAILY_LIMIT, PREMIUM_PRICE_STARS, AI_MARKER)
 from db import DB
 import ai
@@ -19,13 +22,14 @@ CONSENT_TEXT = (
     "📋 <b>Перед началом — важное</b>\n\n"
     "Бот обрабатывает ваши персональные данные (Telegram ID, username) "
     "для сохранения игрового прогресса.\n\n"
-    "• Данные хранятся на сервере в РФ.\n"
+    "• Данные хранятся на сервере.\n"
     "• Весь контент сгенерирован ИИ и маркируется.\n"
     "• Игра предназначена для лиц <b>18+</b>.\n"
     "• Вы можете отозвать согласие командой /revoke.\n\n"
     "Нажимая «Согласен», вы подтверждаете согласие на обработку ПДн "
     "и что вам исполнилось 18 лет."
 )
+
 
 @dp.message(Command("start"))
 async def start(m: Message):
@@ -44,12 +48,13 @@ async def start(m: Message):
             await m.answer("🎉 Вы пришли по приглашению! Ваш друг получил +10 действий.")
 
     if user["consent_given"]:
-        ref_link = f"https://t.me/{(await bot.get_me()).username}?start=ref_{m.from_user.id}"
+        me = await bot.get_me()
+        ref_link = f"https://t.me/{me.username}?start=ref_{m.from_user.id}"
         await m.answer(
             f"🎮 С возвращением!\n\n"
             f"🔗 Ваша реферальная ссылка: {ref_link}\n"
             f"👥 Приглашено друзей: {user['referral_count']}\n"
-            f"За каждого друга — +10 действий!",
+            f"За каждого друга — +10 действий!"
         )
         return
 
@@ -59,10 +64,12 @@ async def start(m: Message):
     ]])
     await m.answer(CONSENT_TEXT, reply_markup=kb, parse_mode=ParseMode.HTML)
 
+
 @dp.callback_query(F.data == "consent_yes")
 async def consent_yes(c: CallbackQuery):
     db.give_consent(c.from_user.id)
-    ref_link = f"https://t.me/{(await bot.get_me()).username}?start=ref_{c.from_user.id}"
+    me = await bot.get_me()
+    ref_link = f"https://t.me/{me.username}?start=ref_{c.from_user.id}"
     await c.message.edit_text(
         "✅ Согласие получено. Добро пожаловать в <b>AI-Приключение</b>!\n\n"
         "Просто пиши, что делает герой:\n"
@@ -75,6 +82,7 @@ async def consent_yes(c: CallbackQuery):
         parse_mode=ParseMode.HTML
     )
 
+
 @dp.callback_query(F.data == "consent_no")
 async def consent_no(c: CallbackQuery):
     await c.message.edit_text(
@@ -82,15 +90,18 @@ async def consent_no(c: CallbackQuery):
         "Вы можете вернуться в любой момент командой /start."
     )
 
+
 @dp.message(Command("revoke"))
 async def revoke(m: Message):
     db.revoke_consent(m.from_user.id)
     await m.answer("🗑 Согласие отозвано, история удалена. Вернуться — /start.")
 
+
 @dp.message(Command("reset"))
 async def reset(m: Message):
     db.update_story(m.from_user.id, "")
     await m.answer("🔄 История сброшена.")
+
 
 @dp.message(Command("premium"))
 async def premium(m: Message):
@@ -100,6 +111,7 @@ async def premium(m: Message):
         "Купить → /buy",
         parse_mode=ParseMode.HTML
     )
+
 
 @dp.message(Command("buy"))
 async def buy(m: Message):
@@ -114,9 +126,11 @@ async def buy(m: Message):
         start_parameter="premium"
     )
 
+
 @dp.pre_checkout_query()
 async def pre_checkout(q):
     await q.answer(ok=True)
+
 
 @dp.message(F.successful_payment)
 async def on_payment(m: Message):
@@ -127,6 +141,7 @@ async def on_payment(m: Message):
         "Приятной игры!",
         parse_mode=ParseMode.HTML
     )
+
 
 @dp.message(F.text)
 async def handle(m: Message):
@@ -147,7 +162,7 @@ async def handle(m: Message):
 
     await bot.send_chat_action(m.chat.id, "typing")
     action = m.text.strip()[:500]
-    response = await ai.generate(GIGACHAT_CREDENTIALS, GIGACHAT_SCOPE, user["story"], action)
+    response = await ai.generate(GIGACHAT_AUTH_KEY, user["story"], action)
 
     new_story = (user["story"] + f"\nИГРОК: {action}\nМАСТЕР: {response}")[-4000:]
     db.update_story(uid, new_story)
@@ -159,8 +174,27 @@ async def handle(m: Message):
         parse_mode=ParseMode.HTML
     )
 
+
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
+async def handle_health(request):
+    return web.Response(text="Bot is running")
+
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"✅ Веб-сервер запущен на порту {port}")
+
+
 async def main():
+    await start_web_server()
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
