@@ -8,10 +8,16 @@ from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton,
                            CallbackQuery, LabeledPrice)
 from aiogram.enums import ParseMode
 
-from config import (BOT_TOKEN, GIGACHAT_AUTH_KEY,
-                    FREE_DAILY_LIMIT, PREMIUM_PRICE_STARS, AI_MARKER)
 from db import DB
 import ai
+
+# === НАСТРОЙКИ ===
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+GIGACHAT_CREDENTIALS = os.environ.get("GIGACHAT_CREDENTIALS", "")
+FREE_DAILY_LIMIT = 10
+PREMIUM_PRICE_STARS = 100
+AI_MARKER = "🤖 Сгенерировано ИИ"
+# =================
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)

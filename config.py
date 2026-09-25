@@ -1,8 +1,0 @@
-import os
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GIGACHAT_CREDENTIALS = os.environ.get("GIGACHAT_CREDENTIALS")
-
-FREE_DAILY_LIMIT = 10
-PREMIUM_PRICE_STARS = 100
-AI_MARKER = "🤖 Сгенерировано ИИ"
